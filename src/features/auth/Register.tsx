@@ -9,7 +9,6 @@ import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../lib/axios';
-import { INITIAL_USER } from '../../lib/mockData';
 
 const registerSchema = z
   .object({
@@ -57,16 +56,15 @@ export function Register() {
       setAuth(access_token, refresh_token, user);
       navigate('/onboarding');
     } catch (err: any) {
-      console.warn('Live register fallback:', err.message);
-      // Seamless mock registration
-      setAuth('mock_token_' + Date.now(), 'mock_refresh', {
-        ...INITIAL_USER,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        onboardingCompleted: false,
-      });
-      navigate('/onboarding');
+      console.warn('Live register error:', err.message);
+      const message =
+        err.response?.data?.message ||
+        (Array.isArray(err.response?.data?.message)
+          ? err.response.data.message[0]
+          : null) ||
+        err.response?.data?.error?.message ||
+        'Registration failed. Please check your details and try again.';
+      setErrorMsg(message);
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +81,7 @@ export function Register() {
             Create Athlete Profile
           </h2>
           <p className="text-xs text-text-muted">
-            Join thousands of athletes transforming with SmartCoach AI & elite trainers
+            Join thousands of athletes transforming with APEX AI Coach & elite trainers
           </p>
         </div>
 
@@ -140,7 +138,7 @@ export function Register() {
             <div className="flex items-start gap-2 pt-1 text-[11px] text-text-muted">
               <ShieldCheck className="w-4 h-4 text-accent shrink-0 mt-0.5" />
               <span>
-                By signing up, you agree to the SmartCoach Terms of Service and Privacy Policy.
+                By signing up, you agree to the APEX ATHLETIC Terms of Service and Privacy Policy.
               </span>
             </div>
 

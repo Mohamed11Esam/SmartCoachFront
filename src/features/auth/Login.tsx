@@ -9,7 +9,6 @@ import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../lib/axios';
-import { INITIAL_USER } from '../../lib/mockData';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -33,8 +32,8 @@ export function Login() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'athlete@smartcoach.io',
-      password: 'password123',
+      email: '',
+      password: '',
     },
   });
 
@@ -55,23 +54,22 @@ export function Login() {
       const from = (location.state as any)?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
     } catch (err: any) {
-      console.warn('Backend login fallback:', err.message);
-      // Seamless mock login if backend is unreachable / cold-starting
-      const mockToken = 'mock_jwt_token_' + Date.now();
-      setAuth(mockToken, 'mock_refresh_token', {
-        ...INITIAL_USER,
-        email: data.email,
-      });
-
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      console.warn('Backend login error:', err.message);
+      const message =
+        err.response?.data?.message ||
+        (Array.isArray(err.response?.data?.message)
+          ? err.response.data.message[0]
+          : null) ||
+        err.response?.data?.error?.message ||
+        'Invalid email or password. Please try again.';
+      setAuthError(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const fillDemoAthlete = () => {
-    setValue('email', 'athlete@smartcoach.io');
+    setValue('email', 'user@example.com');
     setValue('password', 'password123');
   };
 

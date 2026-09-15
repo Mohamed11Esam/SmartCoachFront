@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { User } from '../types';
-import { INITIAL_USER } from '../lib/mockData';
 
 interface AuthState {
   token: string | null;
@@ -13,11 +12,36 @@ interface AuthState {
   hydrate: () => void;
 }
 
+const getStoredAuth = () => {
+  if (typeof window === 'undefined') {
+    return { token: null, refreshToken: null, user: null, isAuthenticated: false };
+  }
+  const token = localStorage.getItem('access_token');
+  const refreshToken = localStorage.getItem('refresh_token');
+  const userStr = localStorage.getItem('user');
+  let user: User | null = null;
+  if (token && userStr) {
+    try {
+      user = JSON.parse(userStr) as User;
+    } catch {
+      user = null;
+    }
+  }
+  return {
+    token: token || null,
+    refreshToken: refreshToken || null,
+    user,
+    isAuthenticated: Boolean(token),
+  };
+};
+
+const initialAuth = getStoredAuth();
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  token: null,
-  refreshToken: null,
-  user: INITIAL_USER, // default to athletic profile for smooth preview
-  isAuthenticated: true,
+  token: initialAuth.token,
+  refreshToken: initialAuth.refreshToken,
+  user: initialAuth.user,
+  isAuthenticated: initialAuth.isAuthenticated,
 
   setAuth: (token, refreshToken, user) => {
     localStorage.setItem('access_token', token);
@@ -52,20 +76,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   hydrate: () => {
-    const token = localStorage.getItem('access_token');
-    const refreshToken = localStorage.getItem('refresh_token');
-    const userStr = localStorage.getItem('user');
-
-    if (token) {
-      try {
-        const user = userStr ? (JSON.parse(userStr) as User) : INITIAL_USER;
-        set({ token, refreshToken, user, isAuthenticated: true });
-      } catch {
-        set({ token, refreshToken, user: INITIAL_USER, isAuthenticated: true });
-      }
-    } else {
-      // If no stored token yet, keep INITIAL_USER so users can immediately test the dashboard & player
-      set({ user: INITIAL_USER, isAuthenticated: true });
-    }
+    const { token, refreshToken, user, isAuthenticated } = getStoredAuth();
+    set({ token, refreshToken, user, isAuthenticated });
   },
 }));
+

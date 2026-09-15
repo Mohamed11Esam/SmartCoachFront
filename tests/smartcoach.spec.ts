@@ -279,4 +279,26 @@ test.describe('SmartCoach Athlete E2E Test Suite', () => {
     await expect(page.locator('text=Best pre-workout fueling protocol?')).toBeVisible();
   });
 
+  test('10. Unauthenticated visitor redirects to /login and can sign in', async ({ page }) => {
+    // Clear localStorage to simulate fresh visitor
+    await page.addInitScript(() => {
+      localStorage.clear();
+    });
+
+    await page.goto('/dashboard');
+    // Expect URL to be redirected to /login
+    await page.waitForURL('**/login');
+    await expect(page.locator('h2:has-text("Welcome back, Athlete")')).toBeVisible();
+
+    // Click demo credentials fill button
+    const demoBtn = page.getByRole('button', { name: /Fill Demo Athlete Credentials/i });
+    await expect(demoBtn).toBeVisible();
+    await demoBtn.click();
+
+    // Verify inputs populated
+    await expect(page.getByPlaceholder('athlete@example.com')).toHaveValue('user@example.com');
+    await expect(page.getByPlaceholder('••••••••')).toHaveValue('password123');
+  });
+
 });
+
