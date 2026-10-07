@@ -5,6 +5,7 @@ export interface User {
   role: 'Customer' | 'Coach' | 'Admin';
   firstName: string;
   lastName: string;
+  name?: string;
   isVerified?: boolean;
   phone?: string;
   photoUrl?: string;
@@ -136,6 +137,8 @@ export interface FreeWorkout {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export type Workout = FreeWorkout;
 
 export interface ActiveWorkoutState {
   workout: FreeWorkout | null;

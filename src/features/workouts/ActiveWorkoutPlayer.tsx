@@ -23,11 +23,14 @@ import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Modal } from '../../components/ui/Modal';
 import { useWorkoutStore } from '../../stores/workoutStore';
+import { useAuthStore } from '../../stores/authStore';
 import { formatTimer } from '../../lib/utils';
-import { MOCK_WORKOUTS } from '../../lib/mockData';
+import api from '../../lib/axios';
+import { FreeWorkout } from '../../types';
 
 export function ActiveWorkoutPlayer() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const {
     activeWorkout,
     currentExerciseIndex,
@@ -50,12 +53,32 @@ export function ActiveWorkoutPlayer() {
     syncTimers,
   } = useWorkoutStore();
 
-  // If no active workout, load the default featured one
+  const [isLoadingWorkout, setIsLoadingWorkout] = useState(!activeWorkout);
+  const [exerciseLoads, setExerciseLoads] = useState<Record<string, { weight: number; reps: number }>>({});
+  const [sessionVolume, setSessionVolume] = useState<number>(0);
+  const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+
+  // If no active workout, load the first available workout from DB catalog
   useEffect(() => {
     if (!activeWorkout) {
-      startWorkout(MOCK_WORKOUTS[0]);
+      setIsLoadingWorkout(true);
+      api
+        .get<FreeWorkout[]>('/workouts')
+        .then(({ data }) => {
+          if (Array.isArray(data) && data.length > 0) {
+            startWorkout(data[0]);
+          } else {
+            navigate('/workouts');
+          }
+        })
+        .catch(() => {
+          navigate('/workouts');
+        })
+        .finally(() => {
+          setIsLoadingWorkout(false);
+        });
     }
-  }, [activeWorkout, startWorkout]);
+  }, [activeWorkout, startWorkout, navigate]);
 
   // Timers interval with background tab drift protection
   useEffect(() => {
@@ -90,17 +113,17 @@ export function ActiveWorkoutPlayer() {
   } | null>(null);
 
   const [showVideoModal, setShowVideoModal] = useState(false);
-  const [exerciseLoads, setExerciseLoads] = useState<Record<string, { weight: number; reps: number }>>({});
 
-  const workout = activeWorkout || MOCK_WORKOUTS[0];
-  const exercises = workout.exercises || [];
+  const workout = activeWorkout;
+  const exercises = workout?.exercises || [];
   const currentExercise = exercises[currentExerciseIndex] || exercises[0];
 
   const totalExercises = exercises.length;
-  const currentSetsDone = completedSetsMap[currentExercise?.id] || 0;
+  const currentSetsDone = currentExercise ? completedSetsMap[currentExercise.id] || 0 : 0;
   const totalSetsForCurrent = currentExercise?.sets || 4;
 
   const handleSetToggle = (setIndex: number) => {
+    if (!currentExercise) return;
     if (setIndex < currentSetsDone) {
       uncompleteSet(currentExercise.id);
     } else {
@@ -108,7 +131,30 @@ export function ActiveWorkoutPlayer() {
     }
   };
 
-  const handleFinishSession = () => {
+  const handleFinishSession = async () => {
+    if (!workout) return;
+
+    // Calculate real total tonnage / volume from completed sets
+    let totalVolume = 0;
+    const completedExercisesPayload = exercises.map((ex) => {
+      const setsDone = completedSetsMap[ex.id] || 0;
+      const exWeight = exerciseLoads[ex.id]?.weight ?? ex.weight ?? 0;
+      const exReps = exerciseLoads[ex.id]?.reps ?? ex.reps ?? 10;
+      const vol = setsDone * exReps * exWeight;
+      totalVolume += vol;
+      return {
+        exerciseId: ex.id,
+        exerciseName: ex.name,
+        sets: setsDone,
+        reps: exReps,
+        weight: exWeight,
+        rpe: 8.0,
+        completed: setsDone >= ex.sets,
+      };
+    });
+
+    setSessionVolume(totalVolume);
+
     const summary = finishWorkout();
     setSessionSummary(summary);
     setShowFinishModal(true);
@@ -119,9 +165,34 @@ export function ActiveWorkoutPlayer() {
       origin: { y: 0.6 },
       colors: ['#C6F135', '#22C55E', '#FFFFFF', '#F59E0B'],
     });
+
+    // Persist workout session sets and tonnage directly to MongoDB
+    try {
+      setIsSubmittingLog(true);
+      await api.post('/progress-logs/workout-session', {
+        workoutId: workout._id,
+        workoutTitle: workout.title,
+        durationMinutes: summary.duration,
+        caloriesBurned: summary.calories,
+        totalVolume,
+        completedExercises: completedExercisesPayload,
+        date: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.warn('Workout progress logged locally, failed to sync with backend:', err);
+    } finally {
+      setIsSubmittingLog(false);
+    }
   };
 
-  if (!currentExercise) return null;
+  if (isLoadingWorkout || !currentExercise || !workout) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
+        <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-text-muted">Loading athletic routine...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12 animate-fadeIn">
@@ -438,10 +509,12 @@ export function ActiveWorkoutPlayer() {
 
           <div>
             <h3 className="text-2xl font-black text-text-primary">
-              Outstanding Effort, Marcus!
+              Outstanding Effort, {user?.firstName || 'Athlete'}!
             </h3>
             <p className="text-xs text-text-muted mt-1">
-              Your training session data has been synced to your athlete progress charts.
+              {isSubmittingLog
+                ? 'Syncing training metrics to MongoDB database...'
+                : 'Your training session data has been synced to your athlete progress charts.'}
             </p>
           </div>
 
@@ -460,7 +533,9 @@ export function ActiveWorkoutPlayer() {
             </div>
             <div>
               <p className="text-[10px] text-text-muted uppercase font-bold">Volume</p>
-              <p className="text-lg font-black text-status-approved mt-0.5">14,200 kg</p>
+              <p className="text-lg font-black text-status-approved mt-0.5">
+                {sessionVolume > 0 ? `${sessionVolume.toLocaleString()} kg` : 'Bodyweight'}
+              </p>
             </div>
           </div>
 

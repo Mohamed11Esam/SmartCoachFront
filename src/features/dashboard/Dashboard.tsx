@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Zap,
@@ -23,8 +23,8 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Badge } from '../../components/ui/Badge';
 import { useAuthStore } from '../../stores/authStore';
 import { useWorkoutStore } from '../../stores/workoutStore';
-import { MOCK_WORKOUTS, MOCK_COACHES } from '../../lib/mockData';
-import { FreeWorkout } from '../../types';
+import { FreeWorkout, CoachProfile } from '../../types';
+import api from '../../lib/axios';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -43,17 +43,54 @@ export function Dashboard() {
   });
   const calorieTarget = user?.dailyCalorieTarget || 2750;
 
-  // Check if athlete set a custom AI workout as today's routine
-  const [todaysWorkout, setTodaysWorkout] = useState<FreeWorkout>(() => {
-    try {
-      const customToday = localStorage.getItem('smartcoach_todays_workout');
-      return customToday ? JSON.parse(customToday) : MOCK_WORKOUTS[0];
-    } catch {
-      return MOCK_WORKOUTS[0];
-    }
+  const [todaysWorkout, setTodaysWorkout] = useState<FreeWorkout | null>(null);
+  const [assignedCoach, setAssignedCoach] = useState<CoachProfile | null>(null);
+  const [stats, setStats] = useState<{ totalWorkouts: number; completedWorkouts: number; currentStreak: number }>({
+    totalWorkouts: 0,
+    completedWorkouts: 0,
+    currentStreak: 0,
   });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const assignedCoach = MOCK_COACHES[0]; // Elena Rostova
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setIsLoading(true);
+      try {
+        const [workoutsRes, coachesRes, statsRes] = await Promise.allSettled([
+          api.get('/workouts'),
+          api.get('/coach-profile'),
+          api.get('/progress-logs/stats'),
+        ]);
+
+        if (workoutsRes.status === 'fulfilled' && Array.isArray(workoutsRes.value.data) && workoutsRes.value.data.length > 0) {
+          const customToday = localStorage.getItem('smartcoach_todays_workout');
+          if (customToday) {
+            try {
+              setTodaysWorkout(JSON.parse(customToday));
+            } catch {
+              setTodaysWorkout(workoutsRes.value.data[0]);
+            }
+          } else {
+            setTodaysWorkout(workoutsRes.value.data[0]);
+          }
+        }
+
+        if (coachesRes.status === 'fulfilled' && Array.isArray(coachesRes.value.data) && coachesRes.value.data.length > 0) {
+          setAssignedCoach(coachesRes.value.data[0]);
+        }
+
+        if (statsRes.status === 'fulfilled' && statsRes.value.data) {
+          setStats(statsRes.value.data);
+        }
+      } catch (err) {
+        console.warn('Dashboard fetch error:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   const addWater = (amount: number) => {
     setWaterIntake((prev) => {
@@ -64,8 +101,12 @@ export function Dashboard() {
   };
 
   const handleStartTodayWorkout = () => {
-    startWorkout(todaysWorkout);
-    navigate('/workouts/play');
+    if (todaysWorkout) {
+      startWorkout(todaysWorkout);
+      navigate('/workouts/play');
+    } else {
+      navigate('/workouts');
+    }
   };
 
   return (
@@ -79,7 +120,7 @@ export function Dashboard() {
             <div className="flex items-center gap-2">
               <Badge variant="accent" size="sm">
                 <Flame className="w-3 h-3 mr-1 fill-accent" />
-                12-Day Consistency Streak
+                {stats.currentStreak > 0 ? `${stats.currentStreak}-Day Consistency Streak` : 'Active Training Plan'}
               </Badge>
               <Badge variant="neutral" size="sm">
                 Track: {user?.fitnessGoal || 'Gain Muscle'}
@@ -89,7 +130,7 @@ export function Dashboard() {
               Ready to crush today, {user?.firstName || 'Athlete'}?
             </h1>
             <p className="text-xs sm:text-sm text-text-secondary max-w-xl leading-relaxed">
-              Your AI training protocol has scheduled an upper body hypertrophy session targeting chest, rear delts, and lats today.
+              Your AI training protocol has scheduled an athletic session calibrated to your current recovery phase today.
             </p>
           </div>
 
@@ -126,20 +167,20 @@ export function Dashboard() {
         />
 
         <StatCard
-          title="Weekly Workouts"
-          value="4 / 5"
-          subtitle="80% of weekly goal"
+          title="Completed Workouts"
+          value={`${stats.completedWorkouts} Sessions`}
+          subtitle={`${stats.totalWorkouts} total workouts logged`}
           change={+20}
           changeLabel="vs target"
           icon={<Dumbbell className="w-5 h-5" />}
         />
 
         <StatCard
-          title="Daily Calorie Burn"
-          value="640 kcal"
-          subtitle="Target: 600 kcal"
+          title="Active Streak"
+          value={`${stats.currentStreak} Days`}
+          subtitle="Consistency score"
           change={+6.6}
-          changeLabel="above goal"
+          changeLabel="above average"
           icon={<Flame className="w-5 h-5" />}
         />
 
@@ -169,68 +210,77 @@ export function Dashboard() {
                 </div>
               </div>
               <Badge variant="accent">
-                {todaysWorkout.duration} mins • {todaysWorkout.difficulty}
+                {todaysWorkout ? `${todaysWorkout.duration} mins • ${todaysWorkout.difficulty}` : 'Loading routine...'}
               </Badge>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div className="sm:col-span-1 rounded-xl overflow-hidden border border-border relative aspect-video sm:aspect-auto">
-                <img
-                  src={todaysWorkout.thumbnailUrl || 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=600'}
-                  alt={todaysWorkout.title}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=600';
-                  }}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-full bg-accent/90 text-black flex items-center justify-center shadow-lg">
-                    <Play className="w-4 h-4 fill-black ml-0.5" />
+            {todaysWorkout ? (
+              <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <div className="sm:col-span-1 rounded-xl overflow-hidden border border-border relative aspect-video sm:aspect-auto">
+                  <img
+                    src={todaysWorkout.thumbnailUrl || 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=600'}
+                    alt={todaysWorkout.title}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&q=80&w=600';
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-accent/90 text-black flex items-center justify-center shadow-lg">
+                      <Play className="w-4 h-4 fill-black ml-0.5" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 space-y-3">
+                  <h4 className="text-lg font-bold text-text-primary">{todaysWorkout.title}</h4>
+                  <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
+                    {todaysWorkout.description}
+                  </p>
+
+                  {/* Exercise List preview */}
+                  <div className="space-y-1.5 pt-1">
+                    {todaysWorkout.exercises?.slice(0, 3).map((ex, idx) => (
+                      <div
+                        key={ex.id}
+                        className="flex items-center justify-between text-xs py-1.5 px-3 rounded-lg bg-main border border-border/60"
+                      >
+                        <span className="font-semibold text-text-primary flex items-center gap-2">
+                          <span className="text-accent text-[11px] font-mono">0{idx + 1}</span>
+                          {ex.name}
+                        </span>
+                        <span className="text-text-muted">
+                          {ex.sets} sets × {ex.reps} reps
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 flex items-center gap-3">
+                    <Button
+                      variant="primary"
+                      size="md"
+                      onClick={handleStartTodayWorkout}
+                      className="flex-1"
+                    >
+                      <Play className="w-4 h-4 fill-black mr-2" /> Launch Workout Player
+                    </Button>
+                    <Link to="/workouts">
+                      <Button variant="secondary" size="md">
+                        Browse All
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </div>
-
-              <div className="sm:col-span-2 space-y-3">
-                <h4 className="text-lg font-bold text-text-primary">{todaysWorkout.title}</h4>
-                <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
-                  {todaysWorkout.description}
-                </p>
-
-                {/* Exercise List preview */}
-                <div className="space-y-1.5 pt-1">
-                  {todaysWorkout.exercises?.slice(0, 3).map((ex, idx) => (
-                    <div
-                      key={ex.id}
-                      className="flex items-center justify-between text-xs py-1.5 px-3 rounded-lg bg-main border border-border/60"
-                    >
-                      <span className="font-semibold text-text-primary flex items-center gap-2">
-                        <span className="text-accent text-[11px] font-mono">0{idx + 1}</span>
-                        {ex.name}
-                      </span>
-                      <span className="text-text-muted">
-                        {ex.sets} sets × {ex.reps} reps
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-2 flex items-center gap-3">
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={handleStartTodayWorkout}
-                    className="flex-1"
-                  >
-                    <Play className="w-4 h-4 fill-black mr-2" /> Launch Workout Player
-                  </Button>
-                  <Link to="/workouts">
-                    <Button variant="secondary" size="md">
-                      Browse All
-                    </Button>
-                  </Link>
-                </div>
+            ) : (
+              <div className="py-8 text-center space-y-3">
+                <p className="text-sm text-text-muted">Loading routine from workout database...</p>
+                <Link to="/workouts">
+                  <Button variant="secondary" size="sm">Browse Workout Catalog</Button>
+                </Link>
               </div>
-            </div>
+            )}
           </Card>
 
           {/* AI Coach Quick Consult Prompt */}
@@ -380,16 +430,21 @@ export function Dashboard() {
 
             <div className="flex items-center gap-3">
               <img
-                src={assignedCoach.avatarUrl}
+                src={
+                  assignedCoach?.avatarUrl ||
+                  'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400'
+                }
                 alt="Coach"
                 className="w-11 h-11 rounded-xl object-cover border border-border"
               />
               <div className="min-w-0 flex-1">
                 <h4 className="text-xs font-bold text-text-primary truncate">
-                  Coach Elena Rostova
+                  {typeof assignedCoach?.userId === 'object' && assignedCoach.userId
+                    ? `Coach ${(assignedCoach.userId as any).firstName} ${(assignedCoach.userId as any).lastName}`
+                    : 'Coach Elena Rostova'}
                 </h4>
                 <p className="text-[11px] text-text-muted truncate">
-                  Olympic & Hypertrophy Specialist
+                  {assignedCoach?.specialties?.join(' • ') || 'Olympic & Hypertrophy Specialist'}
                 </p>
               </div>
             </div>

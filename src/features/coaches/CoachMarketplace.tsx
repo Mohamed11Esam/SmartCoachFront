@@ -18,7 +18,6 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { CoachProfile } from '../../types';
-import { MOCK_COACHES } from '../../lib/mockData';
 import { useChatStore } from '../../stores/chatStore';
 import { formatCurrency } from '../../lib/utils';
 import api from '../../lib/axios';
@@ -37,7 +36,9 @@ export function CoachMarketplace() {
   const navigate = useNavigate();
   const { startConversationWithCoach } = useChatStore();
 
-  const [coaches, setCoaches] = useState<CoachProfile[]>(MOCK_COACHES);
+  const [coaches, setCoaches] = useState<CoachProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -47,17 +48,22 @@ export function CoachMarketplace() {
   const [selectedSlot, setSelectedSlot] = useState('10:00 AM');
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  useEffect(() => {
-    const fetchCoaches = async () => {
-      try {
-        const { data } = await api.get('/coach-profile');
-        if (Array.isArray(data) && data.length > 0) {
-          setCoaches(data);
-        }
-      } catch {
-        // Fallback to rich mock coaches
+  const fetchCoaches = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/coach-profile');
+      if (Array.isArray(data)) {
+        setCoaches(data);
       }
-    };
+    } catch (err: any) {
+      setError(err?.message || 'Failed to retrieve certified coaches');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchCoaches();
   }, []);
 
@@ -159,28 +165,58 @@ export function CoachMarketplace() {
       </div>
 
       {/* Coaches Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredCoaches.map((coach) => {
-          const coachName =
-            typeof coach.userId === 'object' && coach.userId
-              ? `${coach.userId.firstName} ${coach.userId.lastName}`
-              : 'Certified Coach';
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="p-6 border-border flex flex-col justify-between space-y-5 animate-pulse">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-card border border-border shrink-0" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-card rounded w-1/2" />
+                  <div className="h-3 bg-card rounded w-3/4" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : filteredCoaches.length === 0 ? (
+        <Card className="p-12 text-center border-border space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-card border border-border flex items-center justify-center text-text-muted">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-text-primary">No coaches found</h3>
+            <p className="text-xs text-text-muted mt-1 max-w-sm mx-auto">
+              {error || 'No verified coach profiles match your filter. Try selecting "All" specialties.'}
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => { setSelectedSpecialty('All'); setSearchQuery(''); fetchCoaches(); }}>
+            Reset Filters
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredCoaches.map((coach) => {
+            const coachName =
+              typeof coach.userId === 'object' && coach.userId
+                ? `${coach.userId.firstName} ${coach.userId.lastName}`
+                : 'Certified Coach';
 
-          return (
-            <Card
-              key={coach._id}
-              hoverEffect
-              className="p-6 border-border flex flex-col justify-between space-y-5"
-            >
-              <div>
-                {/* Header Profile Info */}
-                <div className="flex items-start gap-4">
-                  <div className="relative shrink-0">
-                    <img
-                      src={coach.avatarUrl}
-                      alt={coachName}
-                      className="w-16 h-16 rounded-2xl object-cover border border-border shadow-md"
-                    />
+            return (
+              <Card
+                key={coach._id}
+                hoverEffect
+                className="p-6 border-border flex flex-col justify-between space-y-5"
+              >
+                <div>
+                  {/* Header Profile Info */}
+                  <div className="flex items-start gap-4">
+                    <div className="relative shrink-0">
+                      <img
+                        src={coach.avatarUrl || 'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400'}
+                        alt={coachName}
+                        className="w-16 h-16 rounded-2xl object-cover border border-border shadow-md"
+                      />
                     {coach.isVerified && (
                       <div className="absolute -bottom-1 -right-1 p-0.5 rounded-full bg-status-approved text-black">
                         <ShieldCheck className="w-3.5 h-3.5" />
@@ -269,7 +305,8 @@ export function CoachMarketplace() {
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
 
       {/* Booking Calendar Modal */}
       {selectedCoach && (

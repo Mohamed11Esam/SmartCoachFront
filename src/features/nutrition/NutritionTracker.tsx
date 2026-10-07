@@ -21,47 +21,33 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { FoodLogItem, FreeNutrition } from '../../types';
-import { MOCK_NUTRITION } from '../../lib/mockData';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../lib/axios';
 
-const INITIAL_FOOD_LOG: FoodLogItem[] = [
-  {
-    id: 'f1',
-    name: 'Power Oats with Isolate Whey & Berries',
-    calories: 680,
-    protein: 48,
-    carbs: 82,
-    fats: 16,
-    mealType: 'breakfast',
-    time: '08:30 AM',
-  },
-  {
-    id: 'f2',
-    name: 'Wild Atlantic Salmon with Jasmine Rice & Asparagus',
-    calories: 820,
-    protein: 56,
-    carbs: 88,
-    fats: 24,
-    mealType: 'lunch',
-    time: '01:15 PM',
-  },
-  {
-    id: 'f3',
-    name: '0% Greek Yogurt with Honey & Walnuts',
-    calories: 440,
-    protein: 38,
-    carbs: 42,
-    fats: 12,
-    mealType: 'snack',
-    time: '04:30 PM',
-  },
-];
-
 export function NutritionTracker() {
   const { user } = useAuthStore();
-  const [foodLogs, setFoodLogs] = useState<FoodLogItem[]>(INITIAL_FOOD_LOG);
-  const [nutritionPlans, setNutritionPlans] = useState<FreeNutrition[]>(MOCK_NUTRITION);
+  const [foodLogs, setFoodLogs] = useState<FoodLogItem[]>([]);
+  const [nutritionPlans, setNutritionPlans] = useState<FreeNutrition[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchNutrition = async () => {
+      setIsLoading(true);
+      try {
+        const { data } = await api.get('/nutrition');
+        if (Array.isArray(data)) {
+          setNutritionPlans(data);
+        } else if (data && Array.isArray(data.items)) {
+          setNutritionPlans(data.items);
+        }
+      } catch (err) {
+        console.error('Failed to fetch nutrition protocols:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchNutrition();
+  }, []);
 
   // Add Food Modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -254,71 +240,92 @@ export function NutritionTracker() {
       <div className="space-y-6">
         <h2 className="text-lg font-bold text-text-primary">Today's Meal Timeline</h2>
 
-        <div className="space-y-4">
-          {mealSlots.map((slot) => {
-            const slotItems = foodLogs.filter((item) => item.mealType === slot.type);
-            const slotCalories = slotItems.reduce((sum, i) => sum + i.calories, 0);
+        {foodLogs.length === 0 ? (
+          <Card className="p-8 text-center border-dashed border-border/80 flex flex-col items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-main border border-border flex items-center justify-center mb-3 text-text-muted">
+              <Utensils className="w-6 h-6 text-text-muted" />
+            </div>
+            <h3 className="text-base font-bold text-text-primary mb-1">No meals logged today</h3>
+            <p className="text-xs text-text-secondary max-w-sm mb-4">
+              No meals logged today. Log your first meal or snack using the button above.
+            </p>
+            <Button
+              variant="accent-glow"
+              size="sm"
+              onClick={() => setIsAddModalOpen(true)}
+              className="gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Meal</span>
+            </Button>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {mealSlots.map((slot) => {
+              const slotItems = foodLogs.filter((item) => item.mealType === slot.type);
+              const slotCalories = slotItems.reduce((sum, i) => sum + i.calories, 0);
 
-            return (
-              <Card key={slot.type} className="p-5 border-border/80 space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-lg">{slot.icon}</span>
-                    <h3 className="text-sm font-bold text-text-primary">{slot.label}</h3>
-                    <span className="text-xs text-text-muted">
-                      ({slotCalories} kcal)
-                    </span>
+              return (
+                <Card key={slot.type} className="p-5 border-border/80 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg">{slot.icon}</span>
+                      <h3 className="text-sm font-bold text-text-primary">{slot.label}</h3>
+                      <span className="text-xs text-text-muted">
+                        ({slotCalories} kcal)
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedMealType(slot.type);
+                        setIsAddModalOpen(true);
+                      }}
+                      className="text-xs text-accent hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Food
+                    </button>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedMealType(slot.type);
-                      setIsAddModalOpen(true);
-                    }}
-                    className="text-xs text-accent hover:underline flex items-center gap-1 font-semibold cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Food
-                  </button>
-                </div>
+                  {slotItems.length === 0 ? (
+                    <p className="text-xs text-text-muted py-2">
+                      No foods logged for {slot.label} yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {slotItems.map((food) => (
+                        <div
+                          key={food.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-main border border-border/70 text-xs"
+                        >
+                          <div>
+                            <p className="font-bold text-text-primary">{food.name}</p>
+                            <p className="text-[10px] text-text-muted">{food.time}</p>
+                          </div>
 
-                {slotItems.length === 0 ? (
-                  <p className="text-xs text-text-muted py-2">
-                    No foods logged for {slot.label} yet.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {slotItems.map((food) => (
-                      <div
-                        key={food.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-main border border-border/70 text-xs"
-                      >
-                        <div>
-                          <p className="font-bold text-text-primary">{food.name}</p>
-                          <p className="text-[10px] text-text-muted">{food.time}</p>
+                          <div className="flex items-center gap-4">
+                            <span className="font-bold text-text-primary">{food.calories} kcal</span>
+                            <span className="text-accent font-semibold">{food.protein}g P</span>
+                            <span className="text-text-secondary">{food.carbs}g C</span>
+                            <span className="text-text-muted">{food.fats}g F</span>
+
+                            <button
+                              onClick={() => handleDeleteFood(food.id)}
+                              className="p-1 text-text-muted hover:text-status-declined transition-colors cursor-pointer"
+                              title="Remove food"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-text-primary">{food.calories} kcal</span>
-                          <span className="text-accent font-semibold">{food.protein}g P</span>
-                          <span className="text-text-secondary">{food.carbs}g C</span>
-                          <span className="text-text-muted">{food.fats}g F</span>
-
-                          <button
-                            onClick={() => handleDeleteFood(food.id)}
-                            className="p-1 text-text-muted hover:text-status-declined transition-colors cursor-pointer"
-                            title="Remove food"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Curated Athlete Recipes & Protocols */}
@@ -328,44 +335,81 @@ export function NutritionTracker() {
           <span>Curated Athlete Nutrition Protocols</span>
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {nutritionPlans.map((plan) => (
-            <Card key={plan._id} hoverEffect className="overflow-hidden group border-border">
-              <div className="relative aspect-video w-full bg-main overflow-hidden">
-                <img
-                  src={plan.imageUrl}
-                  alt={plan.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute top-3 left-3 flex gap-1.5">
-                  <Badge variant="accent" size="sm">
-                    {plan.calories} kcal
-                  </Badge>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="overflow-hidden border-border/80 animate-pulse">
+                <div className="aspect-video w-full bg-main border-b border-border/60" />
+                <div className="p-5 space-y-3">
+                  <div className="h-5 bg-border/60 rounded w-2/3" />
+                  <div className="space-y-1.5">
+                    <div className="h-3.5 bg-border/40 rounded w-full" />
+                    <div className="h-3.5 bg-border/40 rounded w-4/5" />
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                    <div className="h-3 bg-border/40 rounded w-20" />
+                    <div className="h-3 bg-border/40 rounded w-20" />
+                    <div className="h-3 bg-border/40 rounded w-20" />
+                  </div>
+                  <div className="h-9 bg-border/60 rounded-xl w-full mt-2" />
                 </div>
-              </div>
-
-              <div className="p-5 space-y-3">
-                <h3 className="text-base font-bold text-text-primary">{plan.title}</h3>
-                <p className="text-xs text-text-secondary line-clamp-2">{plan.content}</p>
-
-                <div className="flex items-center justify-between text-xs font-semibold pt-2 border-t border-border/60">
-                  <span className="text-accent">{plan.protein}g Protein</span>
-                  <span className="text-text-secondary">{plan.carbs}g Carbs</span>
-                  <span className="text-text-muted">{plan.fats}g Fats</span>
+              </Card>
+            ))}
+          </div>
+        ) : nutritionPlans.length === 0 ? (
+          <Card className="p-8 text-center border-dashed border-border/80 flex flex-col items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-main border border-border flex items-center justify-center mb-3 text-text-muted">
+              <BookOpen className="w-6 h-6 text-text-muted" />
+            </div>
+            <h3 className="text-base font-bold text-text-primary mb-1">No nutrition protocols available.</h3>
+            <p className="text-xs text-text-secondary max-w-sm">
+              Check back later for curated athlete nutrition plans and macro protocols.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {nutritionPlans.map((plan) => (
+              <Card key={plan._id} hoverEffect className="overflow-hidden group border-border">
+                <div className="relative aspect-video w-full bg-main overflow-hidden">
+                  <img
+                    src={plan.imageUrl}
+                    alt={plan.title}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&q=80&w=600';
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute top-3 left-3 flex gap-1.5">
+                    <Badge variant="accent" size="sm">
+                      {plan.calories} kcal
+                    </Badge>
+                  </div>
                 </div>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full mt-2"
-                  onClick={() => setViewRecipe(plan)}
-                >
-                  Inspect Protocol Details
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+                <div className="p-5 space-y-3">
+                  <h3 className="text-base font-bold text-text-primary">{plan.title}</h3>
+                  <p className="text-xs text-text-secondary line-clamp-2">{plan.content}</p>
+
+                  <div className="flex items-center justify-between text-xs font-semibold pt-2 border-t border-border/60">
+                    <span className="text-accent">{plan.protein}g Protein</span>
+                    <span className="text-text-secondary">{plan.carbs}g Carbs</span>
+                    <span className="text-text-muted">{plan.fats}g Fats</span>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full mt-2"
+                    onClick={() => setViewRecipe(plan)}
+                  >
+                    Inspect Protocol Details
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Log Food Modal */}

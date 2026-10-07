@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { Conversation, Message } from '../types';
-import { MOCK_CONVERSATIONS, MOCK_MESSAGES } from '../lib/mockData';
 import { getSocket } from '../lib/socket';
 import api from '../lib/axios';
+import { useAuthStore } from './authStore';
 
 interface ChatState {
   conversations: Conversation[];
@@ -22,9 +22,9 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  conversations: MOCK_CONVERSATIONS,
-  activeConversationId: 'conv_01',
-  messages: MOCK_MESSAGES,
+  conversations: [],
+  activeConversationId: null,
+  messages: {},
   isCoachTyping: false,
   isLoading: false,
 
@@ -46,11 +46,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { activeConversationId, messages, conversations } = get();
     if (!activeConversationId) return;
 
+    const currentUser = useAuthStore.getState().user;
+
     const newMessage: Message = {
       _id: 'msg_' + Date.now(),
       conversationId: activeConversationId,
-      senderId: 'user_athlete_01',
-      senderName: 'Marcus',
+      senderId: currentUser?._id || 'user_athlete',
+      senderName: currentUser?.name || 'Athlete',
       content,
       mediaUrl,
       createdAt: new Date().toISOString(),
@@ -87,7 +89,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           mediaUrl,
         });
       } catch (err) {
-        // Mock fallback automated reply from coach to make interactive demo feel alive!
+        // Fallback automated reply simulation for offline/demo if socket & backend are unavailable
         setTimeout(() => {
           get().setCoachTyping(true);
         }, 800);
@@ -145,11 +147,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadConversations: async () => {
     try {
       const { data } = await api.get('/chat/conversations');
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         set({ conversations: data });
+        if (!get().activeConversationId && data.length > 0) {
+          set({ activeConversationId: data[0]._id });
+        }
       }
-    } catch {
-      // Fallback to initial mock
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
     }
   },
 
@@ -161,8 +166,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           messages: { ...state.messages, [conversationId]: data },
         }));
       }
-    } catch {
-      // Fallback to existing mock
+    } catch (err) {
+      console.error(`Failed to load messages for conversation ${conversationId}:`, err);
     }
   },
 

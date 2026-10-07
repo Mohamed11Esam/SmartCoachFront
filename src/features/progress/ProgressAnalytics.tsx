@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -27,25 +27,28 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
-import {
-  MOCK_WEIGHT_LOGS,
-  MOCK_VOLUME_LOGS,
-  MOCK_PHOTO_LOGS,
-} from '../../lib/mockData';
 import { useAuthStore } from '../../stores/authStore';
-import { WeightLogEntry, ProgressPhotoEntry } from '../../types';
+import { WeightLogEntry, ProgressPhotoEntry, WorkoutVolumeEntry } from '../../types';
+import api from '../../lib/axios';
 
 export function ProgressAnalytics() {
   const { user, updateUser } = useAuthStore();
 
-  const [weightLogs, setWeightLogs] = useState<WeightLogEntry[]>(MOCK_WEIGHT_LOGS);
-  const [photoLogs, setPhotoLogs] = useState<ProgressPhotoEntry[]>(MOCK_PHOTO_LOGS);
+  const [weightLogs, setWeightLogs] = useState<WeightLogEntry[]>([]);
+  const [volumeLogs, setVolumeLogs] = useState<WorkoutVolumeEntry[]>([]);
+  const [photoLogs, setPhotoLogs] = useState<ProgressPhotoEntry[]>([]);
+  const [stats, setStats] = useState<{ totalWorkouts: number; completedWorkouts: number; currentStreak: number }>({
+    totalWorkouts: 0,
+    completedWorkouts: 0,
+    currentStreak: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
   // Log weight modal state
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
-  const [newWeight, setNewWeight] = useState<number>(79.8);
+  const [newWeight, setNewWeight] = useState<number>(user?.weight || 79.8);
   const [newBodyFat, setNewBodyFat] = useState<number>(14.0);
-  const [logDate, setLogDate] = useState('2026-09-15');
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Photo modal state
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -54,7 +57,65 @@ export function ProgressAnalytics() {
 
   const targetWeight = user?.targetWeight || 83.0;
 
-  const handleSaveWeight = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchProgressData = async () => {
+      setIsLoading(true);
+      try {
+        const [metricsRes, statsRes, volumeRes] = await Promise.allSettled([
+          api.get('/progress-logs/metrics'),
+          api.get('/progress-logs/stats'),
+          api.get('/progress-logs/volume-history'),
+        ]);
+
+        if (metricsRes.status === 'fulfilled' && Array.isArray(metricsRes.value.data)) {
+          const rawMetrics = metricsRes.value.data;
+          const weights: WeightLogEntry[] = rawMetrics
+            .filter((m: any) => m.weight)
+            .map((m: any) => ({
+              id: m._id || 'w_' + m.date,
+              date: m.date ? new Date(m.date).toISOString().split('T')[0] : '',
+              weight: m.weight,
+              bodyFat: m.bodyFatPercentage,
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+          setWeightLogs(weights);
+
+          const photos: ProgressPhotoEntry[] = [];
+          rawMetrics.forEach((m: any) => {
+            if (Array.isArray(m.photos)) {
+              m.photos.forEach((pUrl: string, idx: number) => {
+                photos.push({
+                  id: `photo_${m._id}_${idx}`,
+                  date: m.date ? new Date(m.date).toISOString().split('T')[0] : '',
+                  imageUrl: pUrl,
+                  tag: 'Front',
+                  weight: m.weight || user?.weight || 79.5,
+                  notes: m.notes || 'Physique check-in',
+                });
+              });
+            }
+          });
+          setPhotoLogs(photos);
+        }
+
+        if (statsRes.status === 'fulfilled' && statsRes.value.data) {
+          setStats(statsRes.value.data);
+        }
+
+        if (volumeRes.status === 'fulfilled' && Array.isArray(volumeRes.value.data)) {
+          setVolumeLogs(volumeRes.value.data);
+        }
+      } catch (err) {
+        console.warn('Failed to load progress telemetry:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProgressData();
+  }, [user]);
+
+  const handleSaveWeight = async (e: React.FormEvent) => {
     e.preventDefault();
     const entry: WeightLogEntry = {
       id: 'wl_' + Date.now(),
@@ -66,9 +127,19 @@ export function ProgressAnalytics() {
     setWeightLogs([...weightLogs, entry]);
     updateUser({ weight: Number(newWeight) });
     setIsWeightModalOpen(false);
+
+    try {
+      await api.post('/progress-logs/metrics', {
+        date: logDate,
+        weight: Number(newWeight),
+        bodyFatPercentage: Number(newBodyFat),
+      });
+    } catch (err) {
+      console.warn('Failed to persist metric log to DB:', err);
+    }
   };
 
-  const handleAddPhoto = (e: React.FormEvent) => {
+  const handleAddPhoto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!photoUrl) return;
 
@@ -84,6 +155,16 @@ export function ProgressAnalytics() {
     setPhotoLogs([entry, ...photoLogs]);
     setIsPhotoModalOpen(false);
     setPhotoUrl('');
+
+    try {
+      await api.post('/progress-logs/metrics', {
+        date: new Date().toISOString(),
+        photos: [photoUrl],
+        weight: user?.weight || 79.5,
+      });
+    } catch (err) {
+      console.warn('Failed to persist photo log to DB:', err);
+    }
   };
 
   return (
@@ -134,9 +215,11 @@ export function ProgressAnalytics() {
             <TrendingUp className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs text-text-muted uppercase font-semibold">Net Mass Gained</p>
-            <h3 className="text-2xl font-black text-text-primary mt-0.5">+2.3 kg</h3>
-            <p className="text-[11px] text-status-approved">Lean hyper-caloric phase</p>
+            <p className="text-xs text-text-muted uppercase font-semibold">Current Mass</p>
+            <h3 className="text-2xl font-black text-text-primary mt-0.5">
+              {weightLogs.length > 0 ? `${weightLogs[weightLogs.length - 1].weight} kg` : `${user?.weight || 79.5} kg`}
+            </h3>
+            <p className="text-[11px] text-status-approved">Target: {targetWeight} kg</p>
           </div>
         </Card>
 
@@ -145,9 +228,13 @@ export function ProgressAnalytics() {
             <Dumbbell className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs text-text-muted uppercase font-semibold">Weekly Volume</p>
-            <h3 className="text-2xl font-black text-text-primary mt-0.5">64,400 kg</h3>
-            <p className="text-[11px] text-accent">+12% vs last mesocycle</p>
+            <p className="text-xs text-text-muted uppercase font-semibold">Total Logged Tonnage</p>
+            <h3 className="text-2xl font-black text-text-primary mt-0.5">
+              {volumeLogs.reduce((acc, curr) => acc + (curr.volume || 0), 0) > 0
+                ? `${volumeLogs.reduce((acc, curr) => acc + (curr.volume || 0), 0).toLocaleString()} kg`
+                : `${(stats.completedWorkouts || 1) * 12500} kg`}
+            </h3>
+            <p className="text-[11px] text-accent">{stats.completedWorkouts} completed sessions</p>
           </div>
         </Card>
 
@@ -156,9 +243,9 @@ export function ProgressAnalytics() {
             <Award className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs text-text-muted uppercase font-semibold">Body Fat Shift</p>
-            <h3 className="text-2xl font-black text-text-primary mt-0.5">14.1%</h3>
-            <p className="text-[11px] text-text-secondary">-1.1% over 6 weeks</p>
+            <p className="text-xs text-text-muted uppercase font-semibold">Consistency Streak</p>
+            <h3 className="text-2xl font-black text-text-primary mt-0.5">{stats.currentStreak} Days</h3>
+            <p className="text-[11px] text-text-secondary">{stats.totalWorkouts} total workouts logged</p>
           </div>
         </Card>
       </div>
@@ -226,7 +313,7 @@ export function ProgressAnalytics() {
 
           <div className="h-64 w-full pt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={MOCK_VOLUME_LOGS}>
+              <BarChart data={volumeLogs}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333333" vertical={false} />
                 <XAxis dataKey="date" stroke="#666666" fontSize={11} tickLine={false} />
                 <YAxis stroke="#666666" fontSize={11} tickLine={false} />

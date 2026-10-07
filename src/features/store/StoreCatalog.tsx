@@ -16,7 +16,6 @@ import { Badge } from '../../components/ui/Badge';
 import { Tabs } from '../../components/ui/Tabs';
 import { Modal } from '../../components/ui/Modal';
 import { Product } from '../../types';
-import { MOCK_PRODUCTS } from '../../lib/mockData';
 import { useCartStore } from '../../stores/cartStore';
 import { formatCurrency } from '../../lib/utils';
 import api from '../../lib/axios';
@@ -32,7 +31,8 @@ const STORE_TABS = [
 export function StoreCatalog() {
   const { addItem, openCart } = useCartStore();
 
-  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'featured' | 'price-low' | 'price-high' | 'rating'>('featured');
@@ -45,13 +45,16 @@ export function StoreCatalog() {
 
   useEffect(() => {
     const fetchProducts = async () => {
+      setIsLoading(true);
       try {
         const { data } = await api.get('/products');
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setProducts(data);
         }
-      } catch {
-        // Fallback to mock products
+      } catch (err) {
+        console.error('Failed to fetch products:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchProducts();
@@ -74,6 +77,14 @@ export function StoreCatalog() {
       if (sortBy === 'rating') return b.averageRating - a.averageRating;
       return 0;
     });
+
+  const hasActiveFilters = selectedCategory !== 'all' || searchQuery.trim() !== '' || sortBy !== 'featured';
+
+  const handleResetFilters = () => {
+    setSelectedCategory('all');
+    setSearchQuery('');
+    setSortBy('featured');
+  };
 
   const handleQuickAdd = (product: Product) => {
     const flavor = product.flavors ? product.flavors[0] : undefined;
@@ -154,124 +165,175 @@ export function StoreCatalog() {
       </div>
 
       {/* Products Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredProducts.map((product) => {
-          const isAdded = addedNotice === product._id;
-          const hasDiscount = !!product.salePrice;
-
-          return (
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
             <Card
-              key={product._id}
-              hoverEffect
-              className="overflow-hidden flex flex-col justify-between group border-border/80"
+              key={i}
+              className="overflow-hidden flex flex-col justify-between border-border/80 animate-pulse"
             >
               <div>
-                {/* Image Container with Badges */}
-                <div className="relative aspect-square w-full bg-main overflow-hidden border-b border-border/60">
-                  <img
-                    src={product.images[0]}
-                    alt={product.name}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?auto=format&fit=crop&q=80&w=500';
-                    }}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                  {/* Badges */}
-                  <div className="absolute top-3 left-3 flex flex-col gap-1">
-                    {hasDiscount && (
-                      <Badge variant="accent" size="sm" className="font-bold">
-                        SALE
-                      </Badge>
-                    )}
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-text-secondary border border-white/10">
-                      {product.category}
-                    </span>
+                <div className="aspect-square w-full bg-main border-b border-border/60" />
+                <div className="p-5 space-y-3">
+                  <div className="h-4 bg-border/60 rounded w-3/4" />
+                  <div className="space-y-1.5">
+                    <div className="h-3 bg-border/40 rounded w-full" />
+                    <div className="h-3 bg-border/40 rounded w-5/6" />
                   </div>
-
-                  {/* Rating pill */}
-                  <div className="absolute top-3 right-3 flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-black/70 backdrop-blur-md text-text-primary border border-white/10">
-                    <Star className="w-3 h-3 fill-accent text-accent" />
-                    <span>{product.averageRating}</span>
-                    <span className="text-text-muted">({product.reviewCount})</span>
-                  </div>
-
-                  {/* Quick Inspect Hover Trigger */}
-                  <button
-                    onClick={() => handleOpenInspect(product)}
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 py-1.5 px-4 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 text-xs font-semibold text-white flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all cursor-pointer hover:bg-black"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Quick View</span>
-                  </button>
-                </div>
-
-                {/* Info */}
-                <div className="p-5 space-y-2">
-                  <h3 className="text-sm font-bold text-text-primary line-clamp-1 group-hover:text-accent transition-colors">
-                    {product.name}
-                  </h3>
-                  <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
-                    {product.description}
-                  </p>
-
-                  {/* Variant teaser */}
-                  {product.flavors && (
-                    <p className="text-[10px] text-text-muted truncate">
-                      Flavors: {product.flavors.join(', ')}
-                    </p>
-                  )}
-                  {product.sizes && (
-                    <p className="text-[10px] text-text-muted truncate">
-                      Sizes: {product.sizes.join(', ')}
-                    </p>
-                  )}
+                  <div className="h-2.5 bg-border/30 rounded w-1/3" />
                 </div>
               </div>
-
-              {/* Price & Add to Cart Footer */}
               <div className="p-5 pt-0 mt-auto flex items-center justify-between border-t border-border/40 pt-4">
-                <div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-base font-black text-text-primary">
-                      {formatCurrency(product.salePrice ?? product.price)}
-                    </span>
-                    {hasDiscount && (
-                      <span className="text-xs text-text-muted line-through">
-                        {formatCurrency(product.price)}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-status-approved font-semibold">
-                    In Stock ({product.stock} left)
-                  </span>
+                <div className="space-y-1">
+                  <div className="h-4 bg-border/60 rounded w-16" />
+                  <div className="h-2.5 bg-border/40 rounded w-20" />
                 </div>
-
-                <Button
-                  variant={isAdded ? 'secondary' : 'primary'}
-                  size="sm"
-                  onClick={() => handleQuickAdd(product)}
-                  className="gap-1.5"
-                >
-                  {isAdded ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-accent" />
-                      <span>Added!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add to Cart</span>
-                    </>
-                  )}
-                </Button>
+                <div className="h-8 bg-border/60 rounded-xl w-24" />
               </div>
             </Card>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <Card className="p-12 text-center border-dashed border-border/80 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-main border border-border flex items-center justify-center mb-4 text-text-muted">
+            <ShoppingBag className="w-8 h-8 text-text-muted" />
+          </div>
+          <h3 className="text-lg font-bold text-text-primary mb-1">No products found</h3>
+          <p className="text-sm text-text-secondary max-w-md mb-6">
+            {hasActiveFilters
+              ? "We couldn't find any products matching your selected filters or search query."
+              : 'There are currently no products available in the store catalog.'}
+          </p>
+          {hasActiveFilters && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleResetFilters}
+            >
+              Reset Filters
+            </Button>
+          )}
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProducts.map((product) => {
+            const isAdded = addedNotice === product._id;
+            const hasDiscount = !!product.salePrice;
+
+            return (
+              <Card
+                key={product._id}
+                hoverEffect
+                className="overflow-hidden flex flex-col justify-between group border-border/80"
+              >
+                <div>
+                  {/* Image Container with Badges */}
+                  <div className="relative aspect-square w-full bg-main overflow-hidden border-b border-border/60">
+                    <img
+                      src={product.images[0]}
+                      alt={product.name}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?auto=format&fit=crop&q=80&w=500';
+                      }}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                    {/* Badges */}
+                    <div className="absolute top-3 left-3 flex flex-col gap-1">
+                      {hasDiscount && (
+                        <Badge variant="accent" size="sm" className="font-bold">
+                          SALE
+                        </Badge>
+                      )}
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-text-secondary border border-white/10">
+                        {product.category}
+                      </span>
+                    </div>
+
+                    {/* Rating pill */}
+                    <div className="absolute top-3 right-3 flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-black/70 backdrop-blur-md text-text-primary border border-white/10">
+                      <Star className="w-3 h-3 fill-accent text-accent" />
+                      <span>{product.averageRating}</span>
+                      <span className="text-text-muted">({product.reviewCount})</span>
+                    </div>
+
+                    {/* Quick Inspect Hover Trigger */}
+                    <button
+                      onClick={() => handleOpenInspect(product)}
+                      className="absolute bottom-3 left-1/2 -translate-x-1/2 py-1.5 px-4 rounded-xl bg-black/80 backdrop-blur-md border border-white/20 text-xs font-semibold text-white flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all cursor-pointer hover:bg-black"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Quick View</span>
+                    </button>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-5 space-y-2">
+                    <h3 className="text-sm font-bold text-text-primary line-clamp-1 group-hover:text-accent transition-colors">
+                      {product.name}
+                    </h3>
+                    <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
+                      {product.description}
+                    </p>
+
+                    {/* Variant teaser */}
+                    {product.flavors && (
+                      <p className="text-[10px] text-text-muted truncate">
+                        Flavors: {product.flavors.join(', ')}
+                      </p>
+                    )}
+                    {product.sizes && (
+                      <p className="text-[10px] text-text-muted truncate">
+                        Sizes: {product.sizes.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Price & Add to Cart Footer */}
+                <div className="p-5 pt-0 mt-auto flex items-center justify-between border-t border-border/40 pt-4">
+                  <div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-base font-black text-text-primary">
+                        {formatCurrency(product.salePrice ?? product.price)}
+                      </span>
+                      {hasDiscount && (
+                        <span className="text-xs text-text-muted line-through">
+                          {formatCurrency(product.price)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-status-approved font-semibold">
+                      In Stock ({product.stock} left)
+                    </span>
+                  </div>
+
+                  <Button
+                    variant={isAdded ? 'secondary' : 'primary'}
+                    size="sm"
+                    onClick={() => handleQuickAdd(product)}
+                    className="gap-1.5"
+                  >
+                    {isAdded ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-accent" />
+                        <span>Added!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add to Cart</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Product Detail Modal */}
       {inspectProduct && (

@@ -17,7 +17,6 @@ import { Badge } from '../../components/ui/Badge';
 import { Tabs } from '../../components/ui/Tabs';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { FreeWorkout } from '../../types';
-import { MOCK_WORKOUTS } from '../../lib/mockData';
 import api from '../../lib/axios';
 
 const CATEGORIES = [
@@ -31,23 +30,29 @@ export function WorkoutList() {
   const navigate = useNavigate();
   const { startWorkout, toggleSaveWorkout, isWorkoutSaved } = useWorkoutStore();
 
-  const [workouts, setWorkouts] = useState<FreeWorkout[]>(MOCK_WORKOUTS);
+  const [workouts, setWorkouts] = useState<FreeWorkout[]>([]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchWorkouts = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data } = await api.get('/workouts');
+      if (Array.isArray(data)) {
+        setWorkouts(data);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load workouts from server.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchWorkouts = async () => {
-      try {
-        const { data } = await api.get('/workouts');
-        if (Array.isArray(data) && data.length > 0) {
-          setWorkouts(data);
-        }
-      } catch {
-        // Fallback to rich mock workouts
-      }
-    };
     fetchWorkouts();
   }, []);
 
@@ -133,7 +138,36 @@ export function WorkoutList() {
       </div>
 
       {/* Workout Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="overflow-hidden flex flex-col justify-between border-border/80 animate-pulse">
+              <div className="aspect-video w-full bg-main/80" />
+              <div className="p-5 space-y-3">
+                <div className="h-4 bg-card rounded w-3/4" />
+                <div className="h-3 bg-card rounded w-full" />
+                <div className="h-3 bg-card rounded w-1/2" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : filteredWorkouts.length === 0 ? (
+        <Card className="p-12 text-center border-border space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-card border border-border flex items-center justify-center text-text-muted">
+            <Dumbbell className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-text-primary">No workouts found</h3>
+            <p className="text-xs text-text-muted mt-1 max-w-sm mx-auto">
+              {error || 'No routines matched your active filter or search query. Try broadening your criteria.'}
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => { setActiveCategory('all'); setSelectedDifficulty('all'); setSearchQuery(''); fetchWorkouts(); }}>
+            Reset Filters
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredWorkouts.map((workout) => {
           const isSaved = isWorkoutSaved(workout._id);
 
@@ -236,7 +270,8 @@ export function WorkoutList() {
             </Card>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
