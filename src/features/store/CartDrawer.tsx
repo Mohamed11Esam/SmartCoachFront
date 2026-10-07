@@ -4,6 +4,7 @@ import { X, Trash2, Plus, Minus, ArrowRight, Tag, Check, ShoppingBag } from 'luc
 import { useCartStore } from '../../stores/cartStore';
 import { formatCurrency } from '../../lib/utils';
 import { Button } from '../../components/ui/Button';
+import { resolveProductImage, getProductFallbackImage } from './StoreCatalog';
 
 export function CartDrawer() {
   const navigate = useNavigate();
@@ -128,8 +129,11 @@ export function CartDrawer() {
                     className="flex gap-3.5 p-3 rounded-xl bg-main/50 border border-border/80 relative group"
                   >
                     <img
-                      src={item.product.images[0] || 'https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?auto=format&fit=crop&q=80&w=200'}
+                      src={resolveProductImage(item.product)}
                       alt={item.product.name}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = getProductFallbackImage(item.product);
+                      }}
                       className="w-18 h-18 rounded-lg object-cover bg-main border border-border"
                     />
 

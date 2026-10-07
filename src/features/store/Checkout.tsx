@@ -19,6 +19,7 @@ import { useCartStore } from '../../stores/cartStore';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency } from '../../lib/utils';
 import api from '../../lib/axios';
+import { resolveProductImage, getProductFallbackImage } from './StoreCatalog';
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -311,8 +312,11 @@ export function Checkout() {
               {items.map((item) => (
                 <div key={item.productId} className="flex gap-3 text-xs">
                   <img
-                    src={item.product.images[0]}
+                    src={resolveProductImage(item.product)}
                     alt={item.product.name}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = getProductFallbackImage(item.product);
+                    }}
                     className="w-12 h-12 rounded-lg object-cover bg-main border border-border"
                   />
                   <div className="flex-1 min-w-0">
