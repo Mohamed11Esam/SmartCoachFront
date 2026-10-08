@@ -1,0 +1,20 @@
+{
+  "name": "Apex Athletic - AI Coaching & Elite Performance",
+  "short_name": "Apex Athletic",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0D0D11",
+  "theme_color": "#0D0D11",
+  "description": "AI-powered workout and nutrition plans, certified elite coaches, interactive workout player, and premium athletic gear.",
+  "orientation": "portrait-primary",
+  "categories": ["fitness", "health", "sports", "lifestyle"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

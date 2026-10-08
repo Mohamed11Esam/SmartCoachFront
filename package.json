@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@mediapipe/tasks-vision": "^1.1.0",
     "axios": "^1.13.4",
     "canvas-confetti": "^1.9.4",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

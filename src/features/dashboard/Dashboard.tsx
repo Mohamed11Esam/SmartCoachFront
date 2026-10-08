@@ -15,12 +15,14 @@ import {
   Utensils,
   Bot,
   Plus,
+  Activity,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatCard } from '../../components/ui/StatCard';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Badge } from '../../components/ui/Badge';
+import { MobileHealthSyncModal, type MobileHealthData } from '../mobile/MobileHealthSyncModal';
 import { useAuthStore } from '../../stores/authStore';
 import { useWorkoutStore } from '../../stores/workoutStore';
 import { FreeWorkout, CoachProfile } from '../../types';
@@ -51,6 +53,18 @@ export function Dashboard() {
     currentStreak: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isHealthSyncOpen, setIsHealthSyncOpen] = useState(false);
+  const [healthData, setHealthData] = useState<MobileHealthData | null>(() => {
+    const saved = localStorage.getItem('apex_mobile_health_data');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -117,7 +131,7 @@ export function Dashboard() {
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="accent" size="sm">
                 <Flame className="w-3 h-3 mr-1 fill-accent" />
                 {stats.currentStreak > 0 ? `${stats.currentStreak}-Day Consistency Streak` : 'Active Training Plan'}
@@ -125,6 +139,19 @@ export function Dashboard() {
               <Badge variant="neutral" size="sm">
                 Track: {user?.fitnessGoal || 'Gain Muscle'}
               </Badge>
+              {healthData && (
+                <button
+                  type="button"
+                  onClick={() => setIsHealthSyncOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-status-approved/15 text-status-approved border border-status-approved/30 hover:bg-status-approved/25 transition-all cursor-pointer"
+                  title="View Mobile Health Telemetry"
+                >
+                  <Activity className="w-3.5 h-3.5 text-status-approved" />
+                  <span>
+                    {healthData.provider === 'apple' ? 'Apple Health' : 'Health Connect'}: {healthData.steps.toLocaleString()} steps • {healthData.activeCalories} kcal
+                  </span>
+                </button>
+              )}
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-text-primary tracking-tight">
               Ready to crush today, {user?.firstName || 'Athlete'}?
@@ -143,6 +170,16 @@ export function Dashboard() {
             >
               <Play className="w-4 h-4 fill-black" />
               <span>Start Scheduled Routine</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setIsHealthSyncOpen(true)}
+              className="gap-2 border-accent/40 text-text-primary hover:border-accent hover:bg-accent/10"
+            >
+              <Activity className="w-4 h-4 text-accent" />
+              <span>Sync HealthKit / Health Connect</span>
             </Button>
 
             <Link to="/ai/chat">
@@ -464,6 +501,12 @@ export function Dashboard() {
           </Card>
         </div>
       </div>
+
+      <MobileHealthSyncModal
+        isOpen={isHealthSyncOpen}
+        onClose={() => setIsHealthSyncOpen(false)}
+        onSyncComplete={(data) => setHealthData(data)}
+      />
     </div>
   );
 }

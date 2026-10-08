@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Clock,
   BookOpen,
+  Barcode,
+  Camera,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +22,7 @@ import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { FoodLogItem, FreeNutrition } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../lib/axios';
@@ -29,6 +32,7 @@ export function NutritionTracker() {
   const [foodLogs, setFoodLogs] = useState<FoodLogItem[]>([]);
   const [nutritionPlans, setNutritionPlans] = useState<FreeNutrition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchNutrition = async () => {
@@ -122,13 +126,22 @@ export function NutritionTracker() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link to="/ai/meal-plan">
             <Button variant="secondary" size="md" className="gap-2">
               <Sparkles className="w-4 h-4 text-accent" />
               <span>Generate AI Meal Plan</span>
             </Button>
           </Link>
+          <Button
+            variant="outline"
+            size="md"
+            onClick={() => setIsBarcodeModalOpen(true)}
+            className="gap-2 border-accent/40 text-text-primary hover:border-accent hover:bg-accent/10"
+          >
+            <Barcode className="w-4 h-4 text-accent" />
+            <span>Scan Barcode</span>
+          </Button>
           <Button
             variant="accent-glow"
             size="md"
@@ -420,6 +433,32 @@ export function NutritionTracker() {
         maxWidth="md"
       >
         <form onSubmit={handleAddFood} className="space-y-4">
+          {/* Quick Barcode Scanner Option */}
+          <div className="p-3 rounded-xl bg-main border border-border/70 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-accent/15 text-accent border border-accent/20">
+                <Barcode className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-text-primary">Packaged Food or Shake?</p>
+                <p className="text-[11px] text-text-muted">Auto-fill macros instantly via camera</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setIsAddModalOpen(false);
+                setIsBarcodeModalOpen(true);
+              }}
+              className="gap-1.5 text-xs"
+            >
+              <Camera className="w-3.5 h-3.5 text-accent" />
+              <span>Scan with Camera</span>
+            </Button>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
               Meal Slot
@@ -540,6 +579,14 @@ export function NutritionTracker() {
           </div>
         </Modal>
       )}
+
+      {/* Barcode Camera Scanner Modal */}
+      <BarcodeScannerModal
+        isOpen={isBarcodeModalOpen}
+        onClose={() => setIsBarcodeModalOpen(false)}
+        onAddFood={(item) => setFoodLogs((prev) => [item, ...prev])}
+        initialMealType={selectedMealType}
+      />
     </div>
   );
 }

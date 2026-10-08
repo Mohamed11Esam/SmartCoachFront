@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
+import toast from 'react-hot-toast';
 import {
   Play,
   Pause,
@@ -16,6 +17,7 @@ import {
   Volume2,
   Video,
   Sparkles,
+  Camera,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -27,6 +29,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { formatTimer } from '../../lib/utils';
 import api from '../../lib/axios';
 import { FreeWorkout } from '../../types';
+import { VisionRepCounterModal } from '../vision/VisionRepCounterModal';
 
 export function ActiveWorkoutPlayer() {
   const navigate = useNavigate();
@@ -113,6 +116,7 @@ export function ActiveWorkoutPlayer() {
   } | null>(null);
 
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showVisionModal, setShowVisionModal] = useState(false);
 
   const workout = activeWorkout;
   const exercises = workout?.exercises || [];
@@ -128,6 +132,27 @@ export function ActiveWorkoutPlayer() {
       uncompleteSet(currentExercise.id);
     } else {
       completeSet(currentExercise.id, totalSetsForCurrent, currentExercise.restSeconds || 60);
+    }
+  };
+
+  const handleSyncVisionReps = (countedReps: number, markSetComplete?: boolean) => {
+    if (!currentExercise) return;
+
+    setExerciseLoads((prev) => ({
+      ...prev,
+      [currentExercise.id]: {
+        weight: prev[currentExercise.id]?.weight ?? currentExercise.weight ?? 0,
+        reps: countedReps,
+      },
+    }));
+
+    if (markSetComplete || countedReps >= (currentExercise.reps || 10)) {
+      completeSet(currentExercise.id, totalSetsForCurrent, currentExercise.restSeconds || 60);
+      toast.success(
+        `Set ${Math.min(totalSetsForCurrent, currentSetsDone + 1)} recorded! ${countedReps} reps verified by MediaPipe AI.`
+      );
+    } else {
+      toast.success(`Logged ${countedReps} reps for Set ${currentSetsDone + 1}.`);
     }
   };
 
@@ -322,7 +347,16 @@ export function ActiveWorkoutPlayer() {
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="accent-glow"
+              size="sm"
+              onClick={() => setShowVisionModal(true)}
+              className="gap-1.5 text-xs font-black shadow-[0_0_15px_rgba(198,241,53,0.25)]"
+            >
+              <Camera className="w-3.5 h-3.5 fill-black/20" />
+              <span>Launch AI Camera Coach (MediaPipe)</span>
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -333,6 +367,37 @@ export function ActiveWorkoutPlayer() {
               <span>Form Video</span>
             </Button>
           </div>
+        </div>
+
+        {/* On-Device MediaPipe CV Rep Counter Banner */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-accent/15 via-card to-card border border-accent/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(198,241,53,0.08)]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-accent text-black font-black flex items-center justify-center shadow-md shrink-0">
+              <Camera className="w-5 h-5 fill-black" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-text-primary">
+                  Automated Edge CV Rep Counting
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/20 text-accent border border-accent/40">
+                  MediaPipe Pose
+                </span>
+              </div>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                Track joint inflection angles & auto-log working reps hands-free with 100% on-device WebAssembly.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="accent-glow"
+            size="sm"
+            onClick={() => setShowVisionModal(true)}
+            className="text-xs font-black shrink-0 self-start sm:self-auto gap-1.5 shadow-md"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Open Camera Coach</span>
+          </Button>
         </div>
 
         {/* Coaching Cues */}
@@ -564,6 +629,16 @@ export function ActiveWorkoutPlayer() {
           </div>
         </div>
       </Modal>
+
+      {/* Vision Rep Counter Modal (MediaPipe Edge CV) */}
+      <VisionRepCounterModal
+        isOpen={showVisionModal}
+        onClose={() => setShowVisionModal(false)}
+        exerciseName={currentExercise.name}
+        targetReps={currentExercise.reps || 10}
+        initialReps={exerciseLoads[currentExercise.id]?.reps || 0}
+        onSyncReps={handleSyncVisionReps}
+      />
     </div>
   );
 }
